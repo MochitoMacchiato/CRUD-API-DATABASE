@@ -81,22 +81,23 @@ def read_task(id: int):
 )
 def create_task(task: TaskCreate):
     if task.title.strip() == "":
-       raise HTTPException(
+       return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail=f"Bad Request. Title is required"
+        content={"error": "Bad Request. Title is required"}
        )
 
-    next_id = max(task["id"] for task in tasks) + 1
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", (task.title, 0))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
 
-    new_task = {
-        "id": next_id,
+    return {
+        "id": new_id,
         "title": task.title,
-        "done" : False
+        "done": False
     }
-
-    tasks.append(new_task)
-
-    return new_task
 
 @app.put(
     "/tasks/{id}",
