@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
+from database import get_connection
 
 app = FastAPI()
 class TaskCreate(BaseModel):
@@ -33,28 +35,19 @@ tasks = [
     }
 ]
 
-
-@app.get("/")
-def read():
-    return {
-        "name": "Task API",
-        "version": "1.0",
-        "endpoints": ["/tasks"]
-    }
-
-@app.get("/health")
-def read_status():
-    return {
-        "status": "ok"  
-    }
-
 @app.get(
     "/tasks",
     summary="List all tasks",
     description="Returns a list of all stored tasks."
 )
 def read_alltasks():
-    return tasks
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM tasks")
+    rows = cur.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
 
 @app.get(
     "/tasks/{id}",
@@ -62,14 +55,23 @@ def read_alltasks():
     description="Retrieves a task by its ID."
 )
 def read_task(id: int):
-    for task in tasks:
-        if task["id"] == id:
-            return task
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM tasks WHERE id =?", (id,))
+    row = cur.fetchone()
+    conn.close()
 
-    raise HTTPException(
+    if row is None:
+        return JSONResponse(
         status_code=404,
-        detail=f"Task {id} not found"
-    )
+        content={"error": "Task not found"}
+        )
+
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"])
+    }
 
 @app.post(
     "/tasks", 
