@@ -106,24 +106,50 @@ def create_task(task: TaskCreate):
 )
 def update_task(id: int, update: TaskUpdate):
     if update.title is None and update.done is None:
-        raise HTTPException(
+        return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail="At least one field (title or done) must be provided."
+        content="At least one field (title or done) must be provided."
        )
 
-    for task in tasks:
-        if task["id"] == id:
-            if update.title is not None:
-                task["title"] = update.title
-            if update.done is not None:
-                task["done"] = update.done
-            return task             
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM tasks WHERE id =?", (id,))
+    row = cur.fetchone()
+    if row is None:
+        conn.close()
+        return JSONResponse(
+        status_code=404,
+        content={"error": "Task " + str(id) + " not found."}
+        )
+    if update.title is not None:
+        cur.execute(
+            """
+            UPDATE tasks
+            SET title = ?
+            WHERE id = ?
+            """,
+            (update.title, id)
+            )
+    if update.done is not None:
+        cur.execute(
+            """
+            UPDATE tasks
+            SET done = ?
+            WHERE id = ?
+            """,
+            (update.done, id)
+            )  
+    conn.commit()
+    cur.execute("SELECT * FROM tasks WHERE id =?", (id,))
+    row = cur.fetchone()
+    conn.close()
 
-    raise HTTPException(
-    status_code=404,
-    detail=f"Task {id} not found"
-    )
-
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"])
+    }
+          
 @app.delete(
     "/tasks/{id}", 
     status_code=status.HTTP_204_NO_CONTENT,
@@ -131,12 +157,20 @@ def update_task(id: int, update: TaskUpdate):
     description="Deletes a task by its ID."
 )
 def delete_task(id: int):
-    for index, task in enumerate(tasks):
-        if task["id"] == id:
-            tasks.pop(index)
-            return
+    conn = get_connection()
+    cur = conn.cursor()
 
-    raise HTTPException(
-    status_code=404,
-    detail=f"Task {id} not found"
-    )
+    cur.execute("SELECT * FROM tasks WHERE id = ?", (id,))
+    row = cur.fetchone()
+
+    if row is None:
+        conn.close()
+        return JSONResponse(
+        status_code=404,
+        content={"error": "Task " + str(id) + " not found."}
+        )
+    cur.execute("DELETE FROM tasks WHERE id = ?", (id,))
+    conn.commit()
+    conn.close()
+
+    return
